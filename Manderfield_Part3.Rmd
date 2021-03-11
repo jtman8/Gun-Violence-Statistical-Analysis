@@ -1,0 +1,80 @@
+---
+fontsize: 10pt
+geometry: margin=1in
+urlcolor: black
+output: pdf_document
+header-includes:
+- \usepackage{setspace}
+- \onehalfspacing
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, highlight=FALSE)
+```
+
+```{r, echo=FALSE, message=FALSE}
+# For Part 1, use this chunk for reading in the data with a path that identifies you.
+setwd("/Users/tylermanderfield/Desktop/First Semester Second Year/STAT3080")
+library(dplyr)
+gun_data1 <- read.csv("gun-violence-data.csv")
+gun_laws_states <- read.csv("gun_laws_states.csv")
+gun_policies <- read.csv("gun_policies.csv")
+gun_policies1 <- gun_policies[,c("Variable.Name","Brief.Description.of.Provision")]
+population <- read.csv("statepopulationdata.csv")
+gun_data1$Year <- substring(as.character(gun_data1$date), 
+                            nchar(as.character(gun_data1$date))-1)
+pop_years <- population[-9,c(1,11)] ## exclude DC since the other dataset doesn't include
+laws_years <- gun_laws_states[gun_laws_states$year >= 2013,]
+laws_2017 <- laws_years[laws_years$year == 2017,]
+by_state <- gun_data1 %>% group_by(state,Year)
+di_by_state<- by_state %>% summarise(num_deaths = sum(n_killed), 
+                num_injured = sum(n_injured))%>% as.data.frame()
+di_2017 <- di_by_state[di_by_state$Year == 17 & 
+                  di_by_state$state != "District of Columbia",]
+di_2017$Year <- as.factor(as.numeric(di_2017$Year) + rep(2000,50))
+df_2017 <- merge(merge(di_2017,laws_2017 , by.x = c("state","Year"), 
+                       by.y = c("state","year")),pop_years, 
+                       by.x = "state", by.y = "NAME")
+df_2017 <- df_2017[,-2]
+df_2017$state <- as.character(df_2017$state)
+# calculate rates per capita
+df_2017$dpc <-df_2017$num_deaths/df_2017$POPESTIMATE2017
+df_2017$ipc <- df_2017$num_injured/df_2017$POPESTIMATE2017
+```
+
+#### Introduction
+This report addresses an issue that has increasingly contributed to the daily news cycle in the United States: gun violence. With the emotionally charged nature of these incidents and the number of policies that could address this issue, it is important that the policies advocated for, and hopefully implemented, are effective in reducing gun deaths. This analysis will center on the effect of raising the age restriction on buying long guns, which consist primarily of rifles and shotguns, to twenty-one years old, instead of eighteen. This policy suggestion seemed to gain increased media attention in February 2018 when Republican President Donald Trump discussed the need to institute this policy, noting that the sale of handguns is currently restricted until the buyer is twenty-one years old under Federal law (Reference 1). Ultimately, this report will address the question of whether or not this specific policy of raising the age restriction for long gun purchases is actually effective at reducing gun deaths.
+
+#### Data
+The data used in this report come from three different sources, as these datasets were merged to create a richer one. The first dataset comes from Kaggle.com (Reference 2), though the original data comes from the Gun Violence Archive. These observations are individual shootings in the United States that were web scraped from the internet and their authenticity were then confirmed by hand. There are no suicides included in the data, so when this report refers to gun violence, it refers to homicide. Most importantly, this source provides the number of people killed as a result of a given shooting. From this, we can determine the number of people killed by state in the United States over the course of a given year. To supplement this data, Reference 3 refers to another Kaggle dataset that has a list of the presence or absence of 133 specific gun control policies by state for each year from 1991 through 2017. The data originates from the Thomson Reuters Westlaw legislative database and from Everytown for Gun Safety and Legal Science, LLC. The final dataset (Reference 4) comes from the U.S. Census Bureau and features predictions of populations by state for the years since the 2010 census. Thus, the joined dataset features each of the fifty states as an observation, with two columns representing the number of gun deaths per capita in 2017 and whether or not the state had legislation banning the sale of long guns to eighteen year olds, respectively.
+
+#### Methodology
+To address the central question, I decided to compare the average number of gun deaths of the states with the provision in place with the average number of gun deaths in states that did not enact this policy. This meant that there were two independent populations, with numeric data. Since I wanted to compare the average number of gun deaths between the two groups, rather than compare the gun deaths of the average state in each group, I used the mean as the statistic, instead of the median. The test was a right-tailed test, since I wanted to determine if the average number of gun deaths is significantly higher in states without the ban. This would signify that the policy is truly effective. The distribution of both populations were found to be skewed right, so I selected to procede with a two-sample randomization test with bootstrapping over a simple two-sample t-test. I then evaluated the results with a significance level of 0.05, the standard value for this type of statistical test. Lastly, I compared the p-value to this significance level to determine if the difference in means between the groups was or was not reasonably likely to have occured by purely by chance.
+
+```{r}
+set.seed(03191999)
+lgs_ban <- df_2017[df_2017$age18longgunsale != 0,]
+lgs_ok <- df_2017[df_2017$age18longgunsale == 0,]
+ban_death <- lgs_ban$dpc
+nban_death <- lgs_ok$dpc
+# hist(ban_death) 
+# hist(nban_death) # both skewed right
+# left tailed since we expect the mean of the no ban should be higher
+ts <- mean(ban_death) - mean(nban_death) 
+samp_all <- c(ban_death , nban_death)
+boot_samps <- replicate(10000, sample(samp_all, replace=T))
+boot_samps_b <- boot_samps[1:19,]
+boot_samps_nb <- boot_samps[20:50,]
+boot_means_b <- apply(boot_samps_b,2,mean)
+boot_means_nb <- apply(boot_samps_nb,2,mean)
+boot_null <- boot_means_b - boot_means_nb
+print(paste("P-value:", sum(boot_null <= ts)/10000 ))
+```
+
+#### Results
+Based on the results of this test, there was insufficient evidence to reject the idea the average number of gun deaths is the same in states with and without the ban and to instead support the idea that the states without the ban had a higher number of gun deaths on average. Since the p-value was determined to be 0.2803 and the significance level was 0.05, I did not find statistically significant evidence supporting the notion that the policy of restricting the sale of long guns to eighteen year olds reduced gun deaths in the U.S. in 2017. Given that these results are fairly unlikely to change year to year, we would not expect this policy on the sale of long guns to be effective in 2018 or in years moving forward in the United States. Thus, from this analysis, it appears that the policy is not effective at significantly reducing gun deaths in the U.S.
+
+#### Conclusion
+The result of this test does not support the push for this policy, as there was insufficient evidence to show that it reduced gun deaths. Based on this, it would not appear that this policy is a viable solution to reduce gun violence in the United States. This test, however, is only an initial examination of this issue. There are other ways to address the effectiveness of this legislation, such as comparing the gun death rates before and after the ban in the states that have implemented such a policy and examining these rates over more than a single year. Therefore, it would be recommended that further analysis should be completed to confirm the findings of this report and to address the gun injury rate in the states before making a final judgment on the overall effectiveness of this policy. 
+
+
